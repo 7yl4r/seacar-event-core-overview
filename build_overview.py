@@ -176,7 +176,7 @@ def main():
     for name, g in globals.items():
         obj = {"overview_meta": meta,
                "overview_map_coarse": map_coarse,
-               "overview_map_fine": fine_out}[name]
+               "overview_map_fine": {"fine": fine_out, "fineSav": fine_sav_out}}[name]
         (OUT_DIR / f"{name}.js").write_text(
             g + " = " + json.dumps(obj, separators=(",", ":")) + ";", encoding="utf-8")
     print("wrote .js data files for file:// usage")
