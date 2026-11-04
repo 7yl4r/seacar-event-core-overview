@@ -50,6 +50,7 @@
   .notes code { background:#eef2f6; padding:1px 4px; border-radius:3px; font-size:12px; }
   select { font:inherit; padding:3px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; }
   .flash td { background:#fff8c5 !important; }
+  tr.dim td { opacity:.45; }
 </style>
 </head>
 <body>
@@ -62,6 +63,15 @@
 
 <main>
   <section>
+    <h2>Filters</h2>
+    <label style="font-size:14px; cursor:pointer">
+      <input type="checkbox" id="sav-only"> Show only <b>seagrass (SAV)</b> records
+      &mdash; events whose Event-Core <code>habitat</code> is <i>Submerged Aquatic Vegetation</i>
+      or mentions &ldquo;seagrass&rdquo;. Applies to the map, time series and table.
+    </label>
+  </section>
+
+  <section>
     <h2>Occurrence locations &mdash; H3 hexagons</h2>
     <div style="margin-bottom:8px; font-size:13px; color:var(--muted)">
       Event coordinates aggregated into H3 hexagons: <b>res&nbsp;5</b> (≈177&nbsp;km²) at state zoom,
@@ -70,7 +80,7 @@
     <div id="map-wrap">
       <div id="map"></div>
       <div id="map-legend">
-        <b>Events / hexagon</b>
+        <b id="legend-title">Events / hexagon</b>
         <div class="lgrad"></div>
         <div style="display:flex; justify-content:space-between"><span>1</span><span>10&thinsp;000+</span></div>
       </div>
@@ -94,8 +104,8 @@
     <div class="tbl-wrap">
       <table id="ds-table">
         <thead><tr>
-          <th>ID</th><th>Title</th><th class="num">Events</th><th class="num">Occurrences</th>
-          <th class="num">Hexes</th><th>Years</th><th>Bounding box</th>
+          <th>ID</th><th>Title</th><th class="num">Events</th><th class="num">Seagrass (SAV)</th>
+          <th class="num">Occurrences</th><th class="num">Hexes</th><th>Years</th><th>Bounding box</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -116,6 +126,12 @@
         <li><b>911</b> (NPS seagrass monitoring) contains zero events and zero occurrences.</li>
         <li>Dataset <b>71</b> (National Wetland Inventory) contributes ≈1.04M events state-wide — the coarse
             res-5 view keeps it legible; zoom in for its fine-grained (res-7) footprint.</li>
+        <li><b>Seagrass filter</b>: an event counts as seagrass/SAV when its Event-Core <code>habitat</code> is
+            <i>Submerged Aquatic Vegetation</i> or contains &ldquo;seagrass&rdquo;. In Event-Core these events carry
+            <code>habitat&nbsp;=&nbsp;Submerged Aquatic Vegetation</code>; the filter drops water-quality
+            (<i>Water Column</i>, <i>Riverine</i>…), wetland (<i>Estuarine and Marine Wetland</i>…) and oyster/coral
+            events. 25 of 31 program directories report SAV events; the earliest are the polygon mapping
+            programs, with dense monitoring coverage from the mid-1990s onwards.</li>
       </ul>
     </div>
   </section>
@@ -132,7 +148,9 @@ const included = new Set();
 const dsColor = [];
 let map, chart, hexLayer, fineOn = false, redrawQueued = false;
 let tsMode = "stack";
-let coarseByHex = new Map(), fineByHex = new Map();
+let savOnly = false;
+let coarseByHex = new Map(), coarseSavByHex = new Map();
+let fineByHex = new Map(), fineSavByHex = new Map();
 const polyCache = new Map();   // h3 index -> latlng ring (memoized)
 
 const fmt = n => n === null || n === undefined ? "—" : n.toLocaleString("en-US");
@@ -154,16 +172,27 @@ function countColor(c) {
     dsColor[i] = pal(i);
     included.add(i);
   });
-  COARSE.coarse = coarse.coarse || {};
-  Object.assign(TS, coarse.ts || {});
-  Object.assign(FINE, fine);
+  COARSE.all = coarse.coarse || {};
+  COARSE.sav = coarse.coarseSav || {};
+  FINE.all = fine.fine || {};
+  FINE.sav = fine.fineSav || {};
+  Object.assign(TS, coarse.ts || {});   // TS[i][year] = [total, sav]
 
   buildMaps();
+  const cb = document.getElementById("sav-only");
+  if (/sav=1/.test(location.hash)) { cb.checked = true; savOnly = true; }
   renderCards();
   renderTable();
   renderLegendFilter();
   initMap();
   initChart();
+  cb.addEventListener("change", () => {
+    savOnly = cb.checked;
+    hexesRedraw(true);
+    chartUpdate();
+    renderLegendFilter();
+    renderTable();
+  });
 })();
 
 function accum(mapRef, hexArr, dsIdx) {
@@ -177,18 +206,22 @@ function accum(mapRef, hexArr, dsIdx) {
   }
 }
 function buildMaps() {
-  Object.entries(COARSE.coarse).forEach(([k, hexArr]) => accum(coarseByHex, hexArr, +k));
-  Object.entries(FINE).forEach(([k, hexArr]) => accum(fineByHex, hexArr, +k));
+  Object.entries(COARSE.all).forEach(([k, hexArr]) => accum(coarseByHex, hexArr, +k));
+  Object.entries(COARSE.sav).forEach(([k, hexArr]) => accum(coarseSavByHex, hexArr, +k));
+  Object.entries(FINE.all).forEach(([k, hexArr]) => accum(fineByHex, hexArr, +k));
+  Object.entries(FINE.sav).forEach(([k, hexArr]) => accum(fineSavByHex, hexArr, +k));
 }
 
 function renderCards() {
   const ev  = DS.reduce((s, d) => s + d.events, 0);
   const oc  = DS.reduce((s, d) => s + d.occurrences, 0);
+  const sv  = DS.reduce((s, d) => s + (d.sav || 0), 0);
   const geo = DS.filter(d => d.minLat !== null).length;
   const ys  = DS.flatMap(d => [d.yearMin, d.yearMax]).filter(y => y);
   document.getElementById("cards").innerHTML = [
     [DS.length, "Program datasets"],
     [ev, "Event records"],
+    [sv, "Seagrass (SAV) event records"],
     [oc, "Occurrence records"],
     [geo, "Datasets with event coordinates"],
     [fmt(Math.min(...ys)) + " – " + fmt(Math.max(...ys)), "Event-date span"],
@@ -197,14 +230,15 @@ function renderCards() {
 
 function renderTable() {
   document.querySelector("#ds-table tbody").innerHTML = DS.map((d, i) => `
-    <tr data-i="${i}">
+    <tr data-i="${i}" class="${savOnly && !d.sav ? "dim" : ""}">
       <td style="white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${dsColor[i]};margin-right:5px"></span>${d.id}</td>
       <td>${d.title}</td>
       <td class="num">${fmt(d.events)}</td>
+      <td class="num">${d.sav ? fmt(d.sav) : "—"}</td>
       <td class="num">${d.occurrences ? fmt(d.occurrences) : "—"}</td>
       <td class="num">${d.minLat === null
           ? '<span class="tag none">no coords</span>'
-          : `<span class="tag ok">${fmt((COARSE.coarse[String(i)] || []).length)}</span>`}</td>
+          : `<span class="tag ok">${fmt((COARSE.all[String(i)] || []).length)}</span>`}</td>
       <td style="white-space:nowrap">${d.yearMin ?? "?"} – ${d.yearMax ?? "?"}</td>
       <td style="font-size:12px;white-space:nowrap">${/W None/.test(d.bbox) ? "—" : d.bbox}</td>
     </tr>`).join("");
@@ -225,7 +259,7 @@ function renderLegendFilter() {
     <label><input type="checkbox" data-dsi="${i}" ${included.has(i) ? "checked" : ""}>
       <i class="dot" style="background:${dsColor[i]}"></i><span class="t" title="${d.title}">${d.id} ${d.title.slice(0, 30)}</span></label>`).join("");
   document.getElementById("map-legend").innerHTML = `
-    <b>Events / hexagon</b>
+    <b>${savOnly ? "Seagrass (SAV) events / hexagon" : "Events / hexagon"}</b>
     <div class="lgrad"></div>
     <div style="display:flex;justify-content:space-between"><span>1</span><span>10&thinsp;000+</span></div>
     <div style="margin-top:6px"><b>Datasets</b></div>
@@ -275,9 +309,11 @@ function hexesRedraw(force) {
   if (!hexLayer) return;
   const useFine = map.getZoom() >= FINE_ZOOM;
   if (useFine !== fineOn) fineOn = useFine;
-  const isFine = fineOn;
-  const mapRef = isFine ? fineByHex : coarseByHex;
-  let maxCells = 6000;                       // render cap per view
+  const level = fineOn ? "fine" : "coarse";
+  const mapRef = savOnly ? (fineOn ? fineSavByHex : coarseSavByHex)
+                         : (fineOn ? fineByHex : coarseByHex);
+  const savMap  = savOnly ? null : (fineOn ? fineSavByHex : coarseSavByHex);
+  const maxCells = 6000;                       // render cap per view
   const items = visibleH3(mapRef);
   if (items.length > maxCells) {
     // keep the densest hexes when over cap
@@ -289,17 +325,21 @@ function hexesRedraw(force) {
     const parts = e.parts.filter(([i]) => included.has(i));
     if (!parts.length) continue;
     const count = parts.reduce((s, [, c]) => s + c, 0);
-    const lines = parts.map(([i, c]) =>
-      `<span style="color:${dsColor[i]};font-size:15px">&#9632;</span> ${DS[i].id}: ${fmt(c)} events · ${DS[i].title.slice(0, 44)}`)
-      .join("<br>");
+    const savParts = savMap ? (savMap.get(h) || {}).parts || [] : null;
+    const lines = parts.map(([i, c]) => {
+      const sav = savParts ? (savParts.find(([j]) => j === i) || [i, 0])[1] : null;
+      const extra = sav === null ? "" : `, ${fmt(sav)} SAV`;
+      return `<span style="color:${dsColor[i]};font-size:15px">&#9632;</span> ${DS[i].id}: ${fmt(c)} events${extra} · ${DS[i].title.slice(0, 40)}`;
+    }).join("<br>");
     L.polygon(hexRing(h), styleFor(count))
-      .bindPopup(`<b>${fmt(count)} events</b><br><span style="font-size:11px;color:#656d76">H3 res ${isFine ? 7 : 5} ${h}</span><hr style="margin:4px 0">${lines}`)
+      .bindPopup(`<b>${fmt(count)} events${savOnly ? " (seagrass/SAV only)" : ""}</b><br><span style="font-size:11px;color:#656d76">H3 res ${fineOn ? 7 : 5} ${h}</span><hr style="margin:4px 0">${lines}`)
       .addTo(hexLayer);
   }
   const hidden = items.length >= maxCells ? ` (showing ${maxCells} densest of ${len(mapRef)} hexes this view)` : "";
   const nog = DS.filter(d => d.minLat === null).map(d => d.id);
   document.getElementById("map-note").innerHTML =
-    `Aggregation level: <b>res ${isFine ? 7 : 5}</b> · rendered: ${fmt(hexLayer.getLayers().length)} hexagons${hidden}
+    `Aggregation level: <b>res ${fineOn ? 7 : 5}</b>${savOnly ? " · <b>seagrass (SAV) filter on</b>" : ""}
+     · rendered: ${fmt(hexLayer.getLayers().length)} hexagons${hidden}
      · not mappable (no event coordinates): ${nog.join(", ") || "none"}`;
 }
 function len(m) { let n = 0; for (const _k of m.keys()) n++; return n; }
@@ -353,7 +393,10 @@ function chartUpdate() {
   const allYears = [];
   for (let y = y0; y <= y1; y++) allYears.push(y);
 
-  const seriesList = DS.map((d, i) => ({ d, i })).filter(({ i }) => included.has(i) && TS[i]);
+  const seriesList = DS.map((d, i) => ({ d, i }))
+    .filter(({ i }) => included.has(i) && TS[i])
+    .filter(({ i }) => Object.values(TS[i]).some(rec => rec[savOnly ? 1 : 0] > 0));
+  const col = rec => rec[savOnly ? 1 : 0];
 
   let series, legend, yLog = tsMode === "lines";
   if (tsMode === "stack") {
@@ -361,7 +404,7 @@ function chartUpdate() {
       name: d.id + " — " + d.title,
       type: "bar", stack: "events", emphasis: { focus: "series" },
       itemStyle: { color: dsColor[i] },
-      data: allYears.map(y => TS[i][y] || 0),
+      data: allYears.map(y => col(TS[i][y] || [0, 0])),
     }));
     legend = { type: "scroll", right: 0, top: 0, itemWidth: 13, textStyle: { fontSize: 11 },
       formatter: n => n.length > 34 ? n.slice(0, 34) + "…" : n };
@@ -370,17 +413,18 @@ function chartUpdate() {
       name: d.id,
       type: "line", symbol: "circle", symbolSize: 3, lineStyle: { width: 1.4 },
       itemStyle: { color: dsColor[i] },
-      data: allYears.map(y => TS[i][y] || null),
+      data: allYears.map(y => { const rec = TS[i][y]; return rec && col(rec) > 0 ? col(rec) : null; }),
     }));
     legend = { type: "scroll", right: 0, top: 0, itemWidth: 13, textStyle: { fontSize: 11 } };
   }
+  const unit = savOnly ? "seagrass (SAV) events / year" : "events / year";
   chart.setOption({
     backgroundColor: "#fff",
     tooltip: { trigger: "axis", axisPointer: { type: tsMode === "stack" ? "shadow" : "line" } },
     legend,
     grid: { left: 70, right: legend.type === "scroll" ? 130 : 20, top: 46, bottom: 55 },
     xAxis: { type: "category", data: allYears, name: "", axisLabel: { fontSize: 10, rotate: 0, interval: Math.floor((allYears.length / 12)) } },
-    yAxis: { type: yLog ? "log" : "value", name: "events / year", axisLabel: { fontSize: 10 } },
+    yAxis: { type: yLog ? "log" : "value", name: unit, axisLabel: { fontSize: 10 } },
     dataZoom: (() => {
       // default window starts after NWI's static 1974 inventory year
       const startPct = yLog ? 0 : Math.max(0, (1975 - y0) / (y1 - y0 + 1) * 100);
