@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEACAR Darwin-Core Event-Core Overview</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/h3-js@4.2.1/dist/h3-js.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
+<script src="overview_meta.js"></script>
+<script src="overview_map_coarse.js"></script>
+<script src="overview_map_fine.js"></script>
+<style>
+  :root { --bg:#f6f8fa; --card:#fff; --line:#d8dee4; --txt:#1f2328; --muted:#656d76; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--txt); }
+  header { background:#0b3d62; color:#fff; padding:18px 28px; }
+  header h1 { margin:0 0 4px; font-size:22px; }
+  header p { margin:0; opacity:.85; font-size:13px; }
+  header code { background:rgba(255,255,255,.15); padding:1px 6px; border-radius:4px; }
+  .cards { display:flex; flex-wrap:wrap; gap:12px; padding:16px 28px 0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 18px; min-width:150px; }
+  .card .n { font-size:24px; font-weight:700; color:#0b3d62; }
+  .card .l { font-size:12px; color:var(--muted); }
+  main { padding:0 28px 40px; max-width:1500px; margin:0 auto; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:8px; margin-top:18px; padding:14px 18px; }
+  section h2 { margin:2px 0 10px; font-size:17px; }
+  #map-wrap { position:relative; height:620px; }
+  #map { height:100%; border-radius:6px; }
+  #map-legend { position:absolute; top:10px; right:10px; z-index:900; background:rgba(255,255,255,.94);
+    border:1px solid var(--line); border-radius:6px; padding:10px 12px; font-size:12px; width:250px; }
+  .lgrad { height:10px; border-radius:3px; margin:4px 0;
+    background:linear-gradient(to right,#feedde,#fd8d3c,#bd0026); }
+  #dsfilter-inner { max-height:170px; overflow-y:auto; margin-top:2px; }
+  #dsfilter-inner label { display:block; padding:1px 0; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #dsfilter-inner .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; flex:none; }
+  #dsfilter-inner label span.t { display:inline-block; max-width:170px; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
+  #chartheight { height:460px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th,td { text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { position:sticky; top:0; background:#eef2f6; font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  tr:hover td { background:#f0f6fc; cursor:pointer; }
+  .num { text-align:right; font-variant-numeric:tabular-nums; }
+  .tbl-wrap { max-height:640px; overflow:auto; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:8px; }
+  .tag.ok { background:#dafbe1; color:#116329; }
+  .tag.none { background:#ffebe9; color:#cf222e; }
+  .notes { font-size:13px; color:var(--muted); line-height:1.55; }
+  .notes code { background:#eef2f6; padding:1px 4px; border-radius:3px; font-size:12px; }
+  select { font:inherit; padding:3px 8px; border:1px solid var(--line); border-radius:5px; background:#fff; }
+  .flash td { background:#fff8c5 !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SEACAR Darwin-Core Event-Core Overview</h1>
+  <p>Aggregated overview of Event-Core data in all Darwin-Core Archives under <code>../seacar2dwc/data/dwc/&lt;program-id&gt;/archive/</code> &middot; generated 2026-11-04</p>
+</header>
+
+<div class="cards" id="cards"></div>
+
+<main>
+  <section>
+    <h2>Occurrence locations &mdash; H3 hexagons</h2>
+    <div style="margin-bottom:8px; font-size:13px; color:var(--muted)">
+      Event coordinates aggregated into H3 hexagons: <b>res&nbsp;5</b> (≈177&nbsp;km²) at state zoom,
+      switching to <b>res&nbsp;7</b> (≈5&nbsp;km²) from zoom&nbsp;10 &middot; fill intensity = log-scaled event count.
+    </div>
+    <div id="map-wrap">
+      <div id="map"></div>
+      <div id="map-legend">
+        <b>Events / hexagon</b>
+        <div class="lgrad"></div>
+        <div style="display:flex; justify-content:space-between"><span>1</span><span>10&thinsp;000+</span></div>
+      </div>
+    </div>
+    <div id="map-note" style="font-size:12px; color:var(--muted); margin-top:6px"></div>
+  </section>
+
+  <section>
+    <h2>Time series &mdash; Event-Core records per year</h2>
+    <div style="margin-bottom:8px">
+      <select id="ts-mode">
+        <option value="stack">Stacked totals (linear)</option>
+        <option value="lines">Per-dataset lines (log)</option>
+      </select>
+    </div>
+    <div id="chartheight"></div>
+  </section>
+
+  <section>
+    <h2>Dataset inventory</h2>
+    <div class="tbl-wrap">
+      <table id="ds-table">
+        <thead><tr>
+          <th>ID</th><th>Title</th><th class="num">Events</th><th class="num">Occurrences</th>
+          <th class="num">Hexes</th><th>Years</th><th>Bounding box</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Notes</h2>
+    <div class="notes">
+      <ul>
+        <li>Source: Event-Core tables (<code>event.txt</code>) of each Darwin-Core Archive (31 program directories).
+            Occurrence totals per dataset come from the <code>eventID</code>&nbsp;→&nbsp;<code>occurrence.txt</code> linkage.</li>
+        <li>For the map and time series, <code>decimalLatitude</code>/<code>decimalLongitude</code> and <code>year</code> of all events
+            were pre-aggregated with Python (<code>h3</code>&nbsp;4.5, pandas) into H3 hexagons (resolutions 5 &amp; 7) and per-year counts;
+            no individual records are shipped with this page.</li>
+        <li><b>3014</b>, <b>3019</b>, <b>4045</b> and <b>566</b> intentionally carry no event coordinates
+            (polygon mapping sources without centroids) — they appear in the table and time series but are not mappable.</li>
+        <li><b>911</b> (NPS seagrass monitoring) contains zero events and zero occurrences.</li>
+        <li>Dataset <b>71</b> (National Wetland Inventory) contributes ≈1.04M events state-wide — the coarse
+            res-5 view keeps it legible; zoom in for its fine-grained (res-7) footprint.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+const H3 = window.h3 || window.H3;   // h3-js UMD global is lowercase "h3"
+const FINE_ZOOM = 10;
+
+const DS = [], COARSE = {}, FINE = {}, TS = {};
+const included = new Set();
+const dsColor = [];
+let map, chart, hexLayer, fineOn = false, redrawQueued = false;
+let tsMode = "stack";
+let coarseByHex = new Map(), fineByHex = new Map();
+const polyCache = new Map();   // h3 index -> latlng ring (memoized)
+
+const fmt = n => n === null || n === undefined ? "—" : n.toLocaleString("en-US");
+const pal = i => `hsl(${Math.round((i * 137.508) % 360)} 62% 45%)`;
+
+function lerpColor(a, b, t) {
+  return "rgb(" + a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(",") + ")";
+}
+function countColor(c) {
+  const t = Math.min(1, Math.log(Math.max(1, c)) / Math.log(11000));
+  return t < .5 ? lerpColor([254,237,222],[253,141,60], t*2)
+                : lerpColor([253,141,60],[189,0,38], (t-.5)*2);
+}
+
+(function BOOT() {
+  const meta = OVERVIEW_META, coarse = OVERVIEW_COARSE, fine = OVERVIEW_FINE;
+  meta.datasets.forEach((d, i) => {
+    DS[i] = d;
+    dsColor[i] = pal(i);
+    included.add(i);
+  });
+  COARSE.coarse = coarse.coarse || {};
+  Object.assign(TS, coarse.ts || {});
+  Object.assign(FINE, fine);
+
+  buildMaps();
+  renderCards();
+  renderTable();
+  renderLegendFilter();
+  initMap();
+  initChart();
+})();
+
+function accum(mapRef, hexArr, dsIdx) {
+  // hexArr: [h3Index, count][] -> fold into mapRef: {[hexId]: {count, parts:[{dsIdx,count}]}}
+  if (!hexArr) return;
+  for (const [h, c] of hexArr) {
+    let e = mapRef.get(h);
+    if (!e) mapRef.set(h, e = { count: 0, parts: [] });
+    e.count += c;
+    e.parts.push([dsIdx, c]);
+  }
+}
+function buildMaps() {
+  Object.entries(COARSE.coarse).forEach(([k, hexArr]) => accum(coarseByHex, hexArr, +k));
+  Object.entries(FINE).forEach(([k, hexArr]) => accum(fineByHex, hexArr, +k));
+}
+
+function renderCards() {
+  const ev  = DS.reduce((s, d) => s + d.events, 0);
+  const oc  = DS.reduce((s, d) => s + d.occurrences, 0);
+  const geo = DS.filter(d => d.minLat !== null).length;
+  const ys  = DS.flatMap(d => [d.yearMin, d.yearMax]).filter(y => y);
+  document.getElementById("cards").innerHTML = [
+    [DS.length, "Program datasets"],
+    [ev, "Event records"],
+    [oc, "Occurrence records"],
+    [geo, "Datasets with event coordinates"],
+    [fmt(Math.min(...ys)) + " – " + fmt(Math.max(...ys)), "Event-date span"],
+  ].map(([n, l]) => `<div class="card"><div class="n">${fmt(n)}</div><div class="l">${l}</div></div>`).join("");
+}
+
+function renderTable() {
+  document.querySelector("#ds-table tbody").innerHTML = DS.map((d, i) => `
+    <tr data-i="${i}">
+      <td style="white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${dsColor[i]};margin-right:5px"></span>${d.id}</td>
+      <td>${d.title}</td>
+      <td class="num">${fmt(d.events)}</td>
+      <td class="num">${d.occurrences ? fmt(d.occurrences) : "—"}</td>
+      <td class="num">${d.minLat === null
+          ? '<span class="tag none">no coords</span>'
+          : `<span class="tag ok">${fmt((COARSE.coarse[String(i)] || []).length)}</span>`}</td>
+      <td style="white-space:nowrap">${d.yearMin ?? "?"} – ${d.yearMax ?? "?"}</td>
+      <td style="font-size:12px;white-space:nowrap">${/W None/.test(d.bbox) ? "—" : d.bbox}</td>
+    </tr>`).join("");
+  document.querySelectorAll("#ds-table tr[data-i]").forEach(tr =>
+    tr.addEventListener("click", () => {
+      const i = +tr.dataset.i;
+      included.clear(); included.add(i); renderLegendFilter(); hexesRedraw();
+      document.querySelectorAll("tr.flash").forEach(el => el.classList.remove("flash"));
+      tr.classList.add("flash");
+      const d = DS[i];
+      if (d.minLat !== null)
+        map.fitBounds([[d.minLat, d.minLon], [d.maxLat, d.maxLon]], { padding: [30, 30] });
+    }));
+}
+
+function renderLegendFilter() {
+  const html = DS.map((d, i) => `
+    <label><input type="checkbox" data-dsi="${i}" ${included.has(i) ? "checked" : ""}>
+      <i class="dot" style="background:${dsColor[i]}"></i><span class="t" title="${d.title}">${d.id} ${d.title.slice(0, 30)}</span></label>`).join("");
+  document.getElementById("map-legend").innerHTML = `
+    <b>Events / hexagon</b>
+    <div class="lgrad"></div>
+    <div style="display:flex;justify-content:space-between"><span>1</span><span>10&thinsp;000+</span></div>
+    <div style="margin-top:6px"><b>Datasets</b></div>
+    <div id="dsfilter-inner">${html}</div>
+    <div style="margin-top:4px">
+      <a href="#" id="all-ds" style="color:#0b3d62">show all</a> ·
+      <a href="#" id="none-ds" style="color:#0b3d62">show none</a>
+    </div>`;
+  document.querySelectorAll("#dsfilter-inner input").forEach(cb =>
+    cb.addEventListener("change", () => {
+      const i = +cb.dataset.dsi;
+      cb.checked ? included.add(i) : included.delete(i);
+      hexesRedraw(); chartUpdate();
+    }));
+  document.getElementById("all-ds").onclick = e => { e.preventDefault(); fillAnd(1); };
+  document.getElementById("none-ds").onclick = e => { e.preventDefault(); fillAnd(0); };
+}
+function fillAnd(mode) {
+  included.clear();
+  DS.forEach((_, i) => { if (mode) included.add(i); });
+  renderLegendFilter(); hexesRedraw(); chartUpdate();
+}
+
+// ---------- map ----------
+function hexRing(h) {
+  let r = polyCache.get(h);
+  if (!r) { r = H3.cellToBoundary(h).map(p => [p[0], p[1]]); polyCache.set(h, r); }
+  return r;
+}
+function visibleH3(mapRef) {
+  const b = map.getBounds().pad(0.25);
+  const out = [];
+  for (const [h, e] of mapRef) {
+    const ring = hexRing(h);
+    // centroid culling: ring is convex, use first vertex as cheap proxy center
+    const p = ring[0];
+    if (p[0] > b.getSouth() && p[0] < b.getNorth() && p[1] > b.getWest() && p[1] < b.getEast())
+      out.push([h, e]);
+  }
+  return out;
+}
+function styleFor(count) {
+  const fill = countColor(count);
+  return { color: "#7a7a7a", weight: .4, opacity: .55, fillColor: fill, fillOpacity: .78 };
+}
+function hexesRedraw(force) {
+  if (!hexLayer) return;
+  const useFine = map.getZoom() >= FINE_ZOOM;
+  if (useFine !== fineOn) fineOn = useFine;
+  const isFine = fineOn;
+  const mapRef = isFine ? fineByHex : coarseByHex;
+  let maxCells = 6000;                       // render cap per view
+  const items = visibleH3(mapRef);
+  if (items.length > maxCells) {
+    // keep the densest hexes when over cap
+    items.sort((a, b) => b[1].count - a[1].count);
+    items.length = maxCells;
+  }
+  hexLayer.clearLayers();
+  for (const [h, e] of items) {
+    const parts = e.parts.filter(([i]) => included.has(i));
+    if (!parts.length) continue;
+    const count = parts.reduce((s, [, c]) => s + c, 0);
+    const lines = parts.map(([i, c]) =>
+      `<span style="color:${dsColor[i]};font-size:15px">&#9632;</span> ${DS[i].id}: ${fmt(c)} events · ${DS[i].title.slice(0, 44)}`)
+      .join("<br>");
+    L.polygon(hexRing(h), styleFor(count))
+      .bindPopup(`<b>${fmt(count)} events</b><br><span style="font-size:11px;color:#656d76">H3 res ${isFine ? 7 : 5} ${h}</span><hr style="margin:4px 0">${lines}`)
+      .addTo(hexLayer);
+  }
+  const hidden = items.length >= maxCells ? ` (showing ${maxCells} densest of ${len(mapRef)} hexes this view)` : "";
+  const nog = DS.filter(d => d.minLat === null).map(d => d.id);
+  document.getElementById("map-note").innerHTML =
+    `Aggregation level: <b>res ${isFine ? 7 : 5}</b> · rendered: ${fmt(hexLayer.getLayers().length)} hexagons${hidden}
+     · not mappable (no event coordinates): ${nog.join(", ") || "none"}`;
+}
+function len(m) { let n = 0; for (const _k of m.keys()) n++; return n; }
+function queueRedraw() { if (!redrawQueued) { redrawQueued = true; requestAnimationFrame(() => { redrawQueued = false; hexesRedraw(); }); } }
+
+function initMap() {
+  map = L.map("map", { renderer: L.canvas({ padding: .3 }) }).setView([27.8, -82.8], 7);
+  // allow deep-linking a view:  #z=ZOOM&lat=LAT&lon=LON
+  const hm = location.hash.match(/z=(\d+).*lat=([\d.\-]+).*lon=([\d.\-]+)/);
+  if (hm) map.setView([+hm[2], +hm[3]], +hm[1]);
+  map.on("moveend", () =>
+    history.replaceState(null, "", `#z=${map.getZoom()}&lat=${map.getCenter().lat.toFixed(4)}&lon=${map.getCenter().lng.toFixed(4)}`));
+  const basemaps = {
+    "Light gray": L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles &copy; Esri — Esri, DeLorme, NAVTEQ", maxZoom: 16,
+    }),
+    "Ocean": L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles &copy; Esri — GEBCO, NOAA, National Geographic, DeLorme", maxZoom: 13,
+    }),
+    "Imagery": L.tileLayer("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles &copy; Esri — Maxar, Earthstar Geographics", maxZoom: 18,
+    }),
+    "OpenStreetMap": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors', maxZoom: 18,
+    }),
+  };
+  basemaps["Light gray"].addTo(map);
+  L.control.layers(basemaps, null, { position: "bottomleft", collapsed: true }).addTo(map);
+  hexLayer = L.featureGroup().addTo(map);
+  map.on("moveend zoomend", queueRedraw);
+  hexesRedraw();
+  setTimeout(hexesRedraw, 300); // re-render once tiles settle
+}
+
+// ---------- chart ----------
+function initChart() {
+  chart = echarts.init(document.getElementById("chartheight"));
+  tsMode = document.getElementById("ts-mode").value;
+  document.getElementById("ts-mode").addEventListener("change", e => {
+    tsMode = e.target.value; chartUpdate();
+  });
+  window.addEventListener("resize", () => chart.resize());
+  chartUpdate();
+}
+function chartUpdate() {
+  if (!chart) return;
+  const years = new Set();
+  Object.values(TS).forEach(yrs => Object.keys(yrs).forEach(y => years.add(+y)));
+  if (!years.size) return;
+  const y0 = Math.min(...years), y1 = Math.max(...years);
+  const allYears = [];
+  for (let y = y0; y <= y1; y++) allYears.push(y);
+
+  const seriesList = DS.map((d, i) => ({ d, i })).filter(({ i }) => included.has(i) && TS[i]);
+
+  let series, legend, yLog = tsMode === "lines";
+  if (tsMode === "stack") {
+    series = seriesList.map(({ d, i }) => ({
+      name: d.id + " — " + d.title,
+      type: "bar", stack: "events", emphasis: { focus: "series" },
+      itemStyle: { color: dsColor[i] },
+      data: allYears.map(y => TS[i][y] || 0),
+    }));
+    legend = { type: "scroll", right: 0, top: 0, itemWidth: 13, textStyle: { fontSize: 11 },
+      formatter: n => n.length > 34 ? n.slice(0, 34) + "…" : n };
+  } else {
+    series = seriesList.map(({ d, i }) => ({
+      name: d.id,
+      type: "line", symbol: "circle", symbolSize: 3, lineStyle: { width: 1.4 },
+      itemStyle: { color: dsColor[i] },
+      data: allYears.map(y => TS[i][y] || null),
+    }));
+    legend = { type: "scroll", right: 0, top: 0, itemWidth: 13, textStyle: { fontSize: 11 } };
+  }
+  chart.setOption({
+    backgroundColor: "#fff",
+    tooltip: { trigger: "axis", axisPointer: { type: tsMode === "stack" ? "shadow" : "line" } },
+    legend,
+    grid: { left: 70, right: legend.type === "scroll" ? 130 : 20, top: 46, bottom: 55 },
+    xAxis: { type: "category", data: allYears, name: "", axisLabel: { fontSize: 10, rotate: 0, interval: Math.floor((allYears.length / 12)) } },
+    yAxis: { type: yLog ? "log" : "value", name: "events / year", axisLabel: { fontSize: 10 } },
+    dataZoom: (() => {
+      // default window starts after NWI's static 1974 inventory year
+      const startPct = yLog ? 0 : Math.max(0, (1975 - y0) / (y1 - y0 + 1) * 100);
+      return [{ type: "inside", xAxisIndex: 0, start: startPct, end: 100 },
+              { type: "slider", height: 18, bottom: 8, start: startPct, end: 100 }];
+    })(),
+    series,
+  }, true);
+}
+</script>
+</body>
+</html>
