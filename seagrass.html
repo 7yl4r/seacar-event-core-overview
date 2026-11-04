@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEACAR Seagrass Overview — DwC Event-Core</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/h3-js@4.2.1/dist/h3-js.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
+<link rel="stylesheet" href="app.css">
+<script src="overview_meta.js"></script>
+<script src="overview_map_coarse.js"></script>
+<script src="overview_map_fine.js"></script>
+<script src="overview_aphiaids.js"></script>
+</head>
+<body>
+<header>
+  <h1>SEACAR Seagrass Overview — DwC Event-Core</h1>
+  <p>Events with at least one seagrass occurrence, selected by the AphiaIDs (WoRMS LSIDs) in <code>occurrence.txt</code> &middot; derived from <code>../seacar2dwc/data/dwc/&lt;program-id&gt;/archive/</code> &middot; generated 2026-11-04 &middot;
+     all-records view: <a href="index.html"><b>index.html</b></a></p>
+</header>
+
+<div class="cards" id="cards"></div>
+
+<main>
+  <section>
+    <h2>Seagrass occurrence locations &mdash; H3 hexagons</h2>
+    <div style="margin-bottom:8px; font-size:13px; color:var(--muted)">
+      Events whose <code>eventID</code> has at least one <code>occurrence.txt</code> row with a <b>seagrass AphiaID</b>
+      in <code>scientificNameID</code>, aggregated into H3 hexagons: <b>res&nbsp;5</b> (≈177&nbsp;km²) at state zoom,
+      <b>res&nbsp;7</b> (≈5&nbsp;km²) from zoom&nbsp;10 &middot; fill intensity = log-scaled seagrass-event count.
+    </div>
+    <div id="map-wrap">
+      <div id="map"></div>
+      <div id="map-legend"></div>
+    </div>
+    <div id="map-note" style="font-size:12px; color:var(--muted); margin-top:6px"></div>
+  </section>
+
+  <section>
+    <h2>Time series &mdash; seagrass events per year</h2>
+    <div style="margin-bottom:8px">
+      <select id="ts-mode">
+        <option value="stack">Stacked totals (linear)</option>
+        <option value="lines">Per-dataset lines (log)</option>
+      </select>
+    </div>
+    <div id="chartheight"></div>
+  </section>
+
+  <section>
+    <h2>Dataset inventory (seagrass)</h2>
+    <div class="tbl-wrap">
+      <table id="ds-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Seagrass taxa (AphiaIDs found in occurrence.txt)</h2>
+    <div class="notes" style="margin-bottom:8px">
+      Selection set: every <code>occurrence.txt</code> row whose <code>scientificName</code> names a seagrass taxon
+      contributed its <code>scientificNameID</code> AphiaID. Events are selected exclusively through these AphiaIDs.
+      Rows with a blank <code>scientificNameID</code> were matched back to their taxon's AphiaID
+      (resolved from data, or via WoRMS when missing there). <code>Halophila&nbsp;sp.</code> rows
+      <i>without</i> an ID remain excluded (open-nomenclature, unresolvable) and are flagged below.
+    </div>
+    <div class="tbl-wrap" style="max-height:340px">
+      <table>
+        <thead><tr><th class="num">AphiaID</th><th>scientificName</th><th>ID source</th></tr></thead>
+        <tbody id="appia-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Notes</h2>
+    <div class="notes">
+      <ul>
+        <li>Selection: an event is seagrass iff at least one of its occurrences carries a seagrass
+            <b>AphiaID</b> (from the registry table above) in <code>scientificNameID</code>, or a blank ID with a
+            name that maps to a registry AphiaID. All AphiaIDs in the registry were observed
+            in the <code>occurrence.txt</code> files themselves.</li>
+        <li>Unresolved: <code>Halophila sp.</code> rows with a blank ID (open-nomenclature; WoRMS returns 404)
+            are excluded and flagged in the registry (see <code>overview_aphiaids.json</code>).</li>
+        <li>Unlike a habitat-based filter this is taxon-exact: e.g. dataset <b>4018</b> (Miami-Dade benthic
+            monitoring) becomes seagrass-bearing because its Braun-Blanquet transects record
+            <i>Halodule wrightii</i> etc., while pure water-quality events stay excluded.</li>
+        <li>Because seagrass coverage is inferred from occurrences, datasets that are polygon habitat maps
+            (<b>3014</b>, <b>3019</b>, <b>4045</b>, <b>566</b>, <b>71</b>) have no occurrence rows and therefore
+            don't contribute here — unlike on the <a href="index.html">all-records page</a>.</li>
+        <li>Aggregation: pre-computed with Python (<code>h3</code>&nbsp;4.5, pandas); no individual records ship with this page.</li>
+        <li>This page loads Leaflet, h3-js and ECharts from public CDNs &mdash; an internet connection is required for the first load.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<script>window.PAGE_MODE = "seagrass";</script>
+<script src="app.js"></script>
+</body>
+</html>

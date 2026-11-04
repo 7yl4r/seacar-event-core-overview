@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SEACAR Darwin-Core Event-Core Overview</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/h3-js@4.2.1/dist/h3-js.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>
+<link rel="stylesheet" href="app.css">
+<script src="overview_meta.js"></script>
+<script src="overview_map_coarse.js"></script>
+<script src="overview_map_fine.js"></script>
+</head>
+<body>
+<header>
+  <h1>SEACAR Darwin-Core Event-Core Overview</h1>
+  <p>Aggregated overview of Event-Core data in all Darwin-Core Archives under <code>../seacar2dwc/data/dwc/&lt;program-id&gt;/archive/</code> &middot; generated 2026-11-04 &middot;
+     seagrass-focused view: <a href="seagrass.html"><b>seagrass.html</b></a></p>
+</header>
+
+<div class="cards" id="cards"></div>
+
+<main>
+  <section>
+    <h2>Occurrence locations &mdash; H3 hexagons (all events)</h2>
+    <div style="margin-bottom:8px; font-size:13px; color:var(--muted)">
+      Event coordinates aggregated into H3 hexagons: <b>res&nbsp;5</b> (≈177&nbsp;km²) at state zoom,
+      switching to <b>res&nbsp;7</b> (≈5&nbsp;km²) from zoom&nbsp;10 &middot; fill intensity = log-scaled event count.
+      Popups also show each dataset's seagrass-event count.
+    </div>
+    <div id="map-wrap">
+      <div id="map"></div>
+      <div id="map-legend"></div>
+    </div>
+    <div id="map-note" style="font-size:12px; color:var(--muted); margin-top:6px"></div>
+  </section>
+
+  <section>
+    <h2>Time series &mdash; Event-Core records per year</h2>
+    <div style="margin-bottom:8px">
+      <select id="ts-mode">
+        <option value="stack">Stacked totals (linear)</option>
+        <option value="lines">Per-dataset lines (log)</option>
+      </select>
+    </div>
+    <div id="chartheight"></div>
+  </section>
+
+  <section>
+    <h2>Dataset inventory</h2>
+    <div class="tbl-wrap">
+      <table id="ds-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Notes</h2>
+    <div class="notes">
+      <ul>
+        <li>Source: Event-Core tables (<code>event.txt</code>) of each Darwin-Core Archive (31 program directories).
+            Occurrence totals per dataset come from the <code>eventID</code>&nbsp;→&nbsp;<code>occurrence.txt</code> linkage.</li>
+        <li>For the map and time series, <code>decimalLatitude</code>/<code>decimalLongitude</code> and <code>year</code> of all events
+            were pre-aggregated with Python (<code>h3</code>&nbsp;4.5, pandas) into H3 hexagons (resolutions 5 &amp; 7) and per-year counts;
+            no individual records are shipped with this page.</li>
+        <li><b>3014</b>, <b>3019</b>, <b>4045</b> and <b>566</b> intentionally carry no event coordinates
+            (polygon mapping sources without centroids) — they appear in the table and time series but are not mappable.</li>
+        <li><b>911</b> (NPS seagrass monitoring) contains zero events and zero occurrences.</li>
+        <li>Dataset <b>71</b> (National Wetland Inventory) contributes ≈1.04M events state-wide — the coarse
+            res-5 view keeps it legible; zoom in for its fine-grained (res-7) footprint.</li>
+        <li>A seagrass-only view of these data (selected by the AphiaIDs in the <code>occurrence.txt</code>
+            tables) is available on the <a href="seagrass.html">seagrass page</a>.</li>
+        <li>This page loads Leaflet, h3-js and ECharts from public CDNs &mdash; an internet connection is required for the first load.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<script>window.PAGE_MODE = "all";</script>
+<script src="app.js"></script>
+</body>
+</html>
